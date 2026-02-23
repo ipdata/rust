@@ -52,6 +52,27 @@ for info in &results {
 }
 ```
 
+### Typed Sub-resource Lookups
+
+Get specific data with strongly-typed return values:
+
+```rust
+let asn = client.asn("8.8.8.8").await?;
+println!("ASN: {} ({})", asn.asn, asn.name);
+
+let threat = client.threat("8.8.8.8").await?;
+println!("Is threat: {}", threat.is_threat);
+
+let tz = client.time_zone("8.8.8.8").await?;
+println!("Timezone: {}", tz.name);
+
+let currency = client.currency("8.8.8.8").await?;
+println!("Currency: {} ({})", currency.name, currency.code);
+
+let carrier = client.carrier("8.8.8.8").await?;
+println!("Carrier: {}", carrier.name);
+```
+
 ### EU Endpoint
 
 Use the EU-specific endpoint backed by datacenters in Frankfurt, Paris, and Ireland:

@@ -1,7 +1,7 @@
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 
 use crate::error::{ApiErrorResponse, Error, Result};
-use crate::types::{BulkResponse, IpInfo};
+use crate::types::{Asn, BulkResponse, Carrier, Currency, IpInfo, Threat, TimeZone};
 
 /// Default global API endpoint.
 const DEFAULT_BASE_URL: &str = "https://api.ipdata.co";
@@ -121,6 +121,41 @@ impl IpData {
         Ok(resp.json().await?)
     }
 
+    /// Returns ASN (Autonomous System Number) data for an IP address.
+    pub async fn asn(&self, ip: &str) -> Result<Asn> {
+        validate_ip(ip)?;
+        let url = format!("{}/{}/asn", self.base_url, ip);
+        self.get_typed(&url).await
+    }
+
+    /// Returns mobile carrier data for an IP address.
+    pub async fn carrier(&self, ip: &str) -> Result<Carrier> {
+        validate_ip(ip)?;
+        let url = format!("{}/{}/carrier", self.base_url, ip);
+        self.get_typed(&url).await
+    }
+
+    /// Returns currency data for an IP address.
+    pub async fn currency(&self, ip: &str) -> Result<Currency> {
+        validate_ip(ip)?;
+        let url = format!("{}/{}/currency", self.base_url, ip);
+        self.get_typed(&url).await
+    }
+
+    /// Returns time zone data for an IP address.
+    pub async fn time_zone(&self, ip: &str) -> Result<TimeZone> {
+        validate_ip(ip)?;
+        let url = format!("{}/{}/time_zone", self.base_url, ip);
+        self.get_typed(&url).await
+    }
+
+    /// Returns threat intelligence data for an IP address.
+    pub async fn threat(&self, ip: &str) -> Result<Threat> {
+        validate_ip(ip)?;
+        let url = format!("{}/{}/threat", self.base_url, ip);
+        self.get_typed(&url).await
+    }
+
     /// Performs a bulk lookup for up to 100 IP addresses.
     ///
     /// Requires a paid API key. Returns results in the same order as the input.
@@ -154,7 +189,24 @@ impl IpData {
         Ok(bulk.responses)
     }
 
-    /// Internal GET helper.
+    /// Internal typed GET helper for sub-resource endpoints.
+    async fn get_typed<T: serde::de::DeserializeOwned>(&self, url: &str) -> Result<T> {
+        let resp = self
+            .client
+            .get(url)
+            .query(&[("api-key", &self.api_key)])
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(parse_error(status.as_u16(), resp).await);
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Internal GET helper for IP lookups with optional field filtering.
     async fn get(&self, url: &str, fields: &[&str]) -> Result<IpInfo> {
         let mut req = self.client.get(url).query(&[("api-key", &self.api_key)]);
 
