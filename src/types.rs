@@ -71,6 +71,10 @@ pub struct IpInfo {
     #[serde(default)]
     pub emoji_unicode: Option<String>,
 
+    /// Organization / ISP name.
+    #[serde(default)]
+    pub organisation: Option<String>,
+
     /// Autonomous System Number information.
     #[serde(default)]
     pub asn: Option<Asn>,
@@ -243,6 +247,10 @@ pub struct Threat {
     #[serde(default)]
     pub is_tor: bool,
 
+    /// Whether the IP belongs to a known VPN provider.
+    #[serde(default)]
+    pub is_vpn: bool,
+
     /// Whether the IP is an iCloud Private Relay address.
     #[serde(default)]
     pub is_icloud_relay: bool,
@@ -278,6 +286,32 @@ pub struct Threat {
     /// Threat feeds that list this IP.
     #[serde(default)]
     pub blocklists: Vec<Blocklist>,
+
+    /// Machine-learning-based threat scores.
+    #[serde(default)]
+    pub scores: Option<ThreatScores>,
+}
+
+/// Machine-learning-based reputation scores for an IP address.
+///
+/// Each score is a value between 0 and 100.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ThreatScores {
+    /// VPN likelihood score.
+    #[serde(default)]
+    pub vpn_score: i32,
+
+    /// Proxy likelihood score.
+    #[serde(default)]
+    pub proxy_score: i32,
+
+    /// Overall threat score.
+    #[serde(default)]
+    pub threat_score: i32,
+
+    /// Trust / reputation score.
+    #[serde(default)]
+    pub trust_score: i32,
 }
 
 /// A threat blocklist entry.

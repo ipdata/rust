@@ -29,5 +29,5 @@ mod types;
 pub use client::IpData;
 pub use error::{Error, Result};
 pub use types::{
-    Asn, Blocklist, Carrier, Company, Currency, IpInfo, Language, Threat, TimeZone,
+    Asn, Blocklist, Carrier, Company, Currency, IpInfo, Language, Threat, ThreatScores, TimeZone,
 };
