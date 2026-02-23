@@ -112,7 +112,8 @@ The main response type is `IpInfo` which includes:
 - **Carrier**: `carrier` (struct with `name`, `mcc`, `mnc`)
 - **Currency**: `currency` (struct with `name`, `code`, `symbol`, `native`, `plural`)
 - **Time Zone**: `time_zone` (struct with `name`, `abbreviation`, `offset`, `is_dst`, `current_time`)
-- **Threat**: `threat` (struct with `is_tor`, `is_proxy`, `is_anonymous`, `is_threat`, `is_bogon`, `blocklists`, and more)
+- **Organisation**: `organisation` (ISP / organization name)
+- **Threat**: `threat` (struct with `is_tor`, `is_vpn`, `is_proxy`, `is_anonymous`, `is_threat`, `is_bogon`, `blocklists`, `scores`, and more)
 - **Languages**: `languages` (vec of `Language` with `name`, `native`, `code`)
 
 ## License
