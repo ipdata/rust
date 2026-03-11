@@ -1,6 +1,6 @@
 [package]
 name = "ipdata"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Official Rust client for the ipdata.co IP geolocation and threat intelligence API"
 license = "MIT"
