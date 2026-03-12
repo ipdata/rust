@@ -10,7 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("IP: {}", info.ip);
     println!("Country: {}", info.country_name.unwrap_or_default());
     println!("City: {}", info.city.unwrap_or_default());
-    println!("Latitude: {}, Longitude: {}", info.latitude, info.longitude);
+    println!("Latitude: {:?}, Longitude: {:?}", info.latitude, info.longitude);
 
     if let Some(asn) = &info.asn {
         println!("ASN: {} ({})", asn.asn, asn.name);

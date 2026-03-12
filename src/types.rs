@@ -9,7 +9,7 @@ pub struct IpInfo {
 
     /// Whether the IP is in an EU member country.
     #[serde(default)]
-    pub is_eu: bool,
+    pub is_eu: Option<bool>,
 
     /// City name.
     #[serde(default)]
@@ -45,11 +45,11 @@ pub struct IpInfo {
 
     /// Latitude.
     #[serde(default)]
-    pub latitude: f64,
+    pub latitude: Option<f64>,
 
     /// Longitude.
     #[serde(default)]
-    pub longitude: f64,
+    pub longitude: Option<f64>,
 
     /// Postal / ZIP code.
     #[serde(default)]
@@ -165,15 +165,15 @@ pub struct Company {
 pub struct Carrier {
     /// Carrier name.
     #[serde(default)]
-    pub name: String,
+    pub name: Option<String>,
 
     /// Mobile Country Code.
     #[serde(default)]
-    pub mcc: String,
+    pub mcc: Option<String>,
 
     /// Mobile Network Code.
     #[serde(default)]
-    pub mnc: String,
+    pub mnc: Option<String>,
 }
 
 /// Language spoken in the country.
@@ -221,15 +221,15 @@ pub struct Currency {
 pub struct TimeZone {
     /// IANA time zone name (e.g. "America/New_York").
     #[serde(default)]
-    pub name: String,
+    pub name: Option<String>,
 
     /// Time zone abbreviation (e.g. "EST").
     #[serde(default, rename = "abbr")]
-    pub abbreviation: String,
+    pub abbreviation: Option<String>,
 
     /// UTC offset string (e.g. "-0500").
     #[serde(default)]
-    pub offset: String,
+    pub offset: Option<String>,
 
     /// Whether daylight saving time is active.
     #[serde(default)]
@@ -237,7 +237,7 @@ pub struct TimeZone {
 
     /// Current time in the time zone (ISO 8601).
     #[serde(default)]
-    pub current_time: String,
+    pub current_time: Option<String>,
 }
 
 /// Threat intelligence data for an IP address.

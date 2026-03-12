@@ -118,7 +118,11 @@ impl IpData {
             return Err(parse_error(status.as_u16(), resp).await);
         }
 
-        Ok(resp.json().await?)
+        let text = resp.text().await?;
+        match serde_json::from_str(&text) {
+            Ok(value) => Ok(value),
+            Err(_) => Ok(serde_json::Value::String(text.trim().to_string())),
+        }
     }
 
     /// Returns ASN (Autonomous System Number) data for an IP address.
