@@ -165,6 +165,31 @@ async fn lookup_field_returns_the_raw_json_value() {
 }
 
 #[tokio::test]
+async fn lookup_field_maps_api_errors_like_the_typed_lookups() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/8.8.8.8/asn"))
+        .and(query_param("api-key", API_KEY))
+        .respond_with(
+            ResponseTemplate::new(403).set_body_json(json!({ "message": "quota exceeded" })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let err = client_for(&server)
+        .lookup_field("8.8.8.8", "asn")
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        &err,
+        Error::Api { status: 403, message } if message == "quota exceeded"
+    ));
+    assert_eq!(err.status(), Some(403));
+}
+
+#[tokio::test]
 async fn asn_decodes_the_typed_sub_resource() {
     let server = MockServer::start().await;
     mock_get(&server, "/8.8.8.8/asn", asn_json()).await;
