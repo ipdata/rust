@@ -87,6 +87,21 @@ let client = ipdata::IpData::eu("your-api-key");
 let client = ipdata::IpData::with_base_url("your-api-key", "https://custom-endpoint.example.com");
 ```
 
+## Connection reuse and HTTP/2
+
+An `IpData` client keeps a persistent HTTPS connection pool for as long as it lives. Create one client per process (or one per API key or endpoint), keep it, and reuse it for every lookup: each new client pays a fresh TLS handshake. Requests to api.ipdata.co are multiplexed over HTTP/2 when the platform negotiates it, and fall back to HTTP/1.1 keep-alive otherwise.
+
+`IpData` is `Send + Sync`: share one instance across tasks by reference or in an `Arc`, or `clone()` it; clones are cheap and share the same pool. There is no close method: dropping the last clone releases the pool and its connections. To bring your own `reqwest::Client` (a pool shared with the rest of your application, timeouts, a proxy or TLS settings), use `IpData::with_client`; the client is used as given, so set the `User-Agent` yourself if you want to keep the SDK's `ipdata-rust/<version>` header.
+
+```rust
+let http = reqwest::Client::builder()
+    .timeout(std::time::Duration::from_secs(10))
+    .build()?;
+let client = ipdata::IpData::with_client("your-api-key", "https://api.ipdata.co", http);
+```
+
+The default client, used by `IpData::new`, `IpData::eu` and `IpData::with_base_url`, negotiates HTTP/2 through ALPN with automatic HTTP/1.1 fallback and is tuned for reuse: pooled connections idle for 60 s are closed, HTTP/2 connections are kept alive with a PING every 30 s, and TCP keep-alive probes run every 30 s. No total request timeout is set. A bulk lookup (`POST /bulk`) whose pooled connection turns out to be dead before any response byte arrives is sent again exactly once on a fresh connection; HTTP error statuses are never retried.
+
 ## Error Handling
 
 ```rust

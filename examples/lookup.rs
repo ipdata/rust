@@ -24,7 +24,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Bulk lookup
     let results = client.bulk(&["8.8.8.8", "1.1.1.1"]).await?;
     for result in &results {
-        println!("{} -> {}", result.ip, result.country_name.as_deref().unwrap_or("unknown"));
+        println!(
+            "{} -> {}",
+            result.ip,
+            result.country_name.as_deref().unwrap_or("unknown")
+        );
     }
 
     Ok(())

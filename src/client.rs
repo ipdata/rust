@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 
 use crate::error::{ApiErrorResponse, Error, Result};
@@ -15,7 +17,40 @@ const BULK_LIMIT: usize = 100;
 /// SDK version.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Idle time after which the client closes a pooled connection.
+///
+/// The API drops idle connections itself after roughly two minutes; closing them
+/// earlier on the client side avoids sending a request into a socket the server has
+/// already given up on.
+const POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Interval between HTTP/2 keep-alive PING frames.
+const HTTP2_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Time a keep-alive PING may stay unanswered before the connection is closed.
+const HTTP2_KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Interval between TCP keep-alive probes.
+const TCP_KEEPALIVE: Duration = Duration::from_secs(30);
+
 /// Client for the ipdata.co API.
+///
+/// An `IpData` owns a [`reqwest::Client`] whose pool of HTTPS connections is kept
+/// alive and reused across requests. Build the client once (per process, or one per
+/// API key or endpoint) and reuse it for every lookup: each call to [`IpData::new`],
+/// [`IpData::eu`] or [`IpData::with_base_url`] creates a new pool, and the first
+/// request on a new pool pays a fresh TCP and TLS handshake. Requests use HTTP/2 when
+/// the server negotiates it and fall back to HTTP/1.1 keep-alive otherwise.
+///
+/// `IpData` is `Send + Sync`, so one instance can be shared across tasks and threads
+/// by reference or in an `Arc`. `Clone` is cheap: a clone shares the connection pool
+/// of the client it was cloned from. There is no close method; dropping the last clone
+/// releases the pool and its connections. Pooled connections are closed after 60
+/// seconds idle, HTTP/2 connections are kept alive with a PING every 30 seconds, and
+/// TCP keep-alive probes are sent every 30 seconds.
+///
+/// To reuse an existing [`reqwest::Client`], or to set timeouts, proxies or TLS
+/// options, use [`IpData::with_client`].
 ///
 /// # Examples
 ///
@@ -49,15 +84,35 @@ impl IpData {
 
     /// Creates a new client with a custom base URL.
     pub fn with_base_url(api_key: impl Into<String>, base_url: impl Into<String>) -> Self {
-        let mut headers = HeaderMap::new();
-        let ua = format!("ipdata-rust/{VERSION}");
-        headers.insert(USER_AGENT, HeaderValue::from_str(&ua).unwrap());
+        Self::with_client(api_key, base_url, build_http_client())
+    }
 
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .expect("failed to build HTTP client");
-
+    /// Creates a client that sends its requests through a caller-supplied
+    /// [`reqwest::Client`].
+    ///
+    /// Use this to share one connection pool with the rest of your application, or to
+    /// configure timeouts, proxies, TLS roots or other options the default client does
+    /// not set. The client is used as given: the SDK's `User-Agent` header
+    /// (`ipdata-rust/<version>`) and its keep-alive tuning are only applied by the
+    /// default client, so add them to your builder if you want them. `base_url` is the
+    /// API endpoint, normally `https://api.ipdata.co` or `https://eu-api.ipdata.co`.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # fn example() -> Result<(), reqwest::Error> {
+    /// let http = reqwest::Client::builder()
+    ///     .timeout(std::time::Duration::from_secs(10))
+    ///     .build()?;
+    /// let client = ipdata::IpData::with_client("your-api-key", "https://api.ipdata.co", http);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_client(
+        api_key: impl Into<String>,
+        base_url: impl Into<String>,
+        client: reqwest::Client,
+    ) -> Self {
         Self {
             client,
             api_key: api_key.into(),
@@ -99,11 +154,7 @@ impl IpData {
     ///
     /// * `ip` - IPv4 or IPv6 address
     /// * `field` - Field name (e.g. `"asn"`, `"threat"`, `"currency"`)
-    pub async fn lookup_field(
-        &self,
-        ip: &str,
-        field: &str,
-    ) -> Result<serde_json::Value> {
+    pub async fn lookup_field(&self, ip: &str, field: &str) -> Result<serde_json::Value> {
         validate_ip(ip)?;
         let url = format!("{}/{}/{}", self.base_url, ip, field);
         let resp = self
@@ -159,6 +210,12 @@ impl IpData {
     /// Performs a bulk lookup for up to 100 IP addresses.
     ///
     /// Requires a paid API key. Returns results in the same order as the input.
+    ///
+    /// The lookup is a `POST`, which the HTTP stack does not retry on its own once the
+    /// request has been written. If a pooled connection turns out to be dead before any
+    /// response byte arrives (reset, EOF or broken pipe on a reused socket), the request
+    /// is sent again exactly once on a fresh connection. HTTP error statuses and
+    /// failures while reading the response body are never retried.
     pub async fn bulk(&self, ips: &[&str]) -> Result<Vec<IpInfo>> {
         if ips.is_empty() {
             return Err(Error::BulkEmpty);
@@ -172,13 +229,16 @@ impl IpData {
         }
 
         let url = format!("{}/bulk", self.base_url);
-        let resp = self
-            .client
-            .post(&url)
-            .query(&[("api-key", &self.api_key)])
-            .json(&ips)
-            .send()
-            .await?;
+        let resp = match self.post_bulk(&url, ips).await {
+            Ok(resp) => resp,
+            // The server or a middlebox can drop a pooled connection while it is idle
+            // without the client noticing until the next request fails on it. hyper
+            // transparently re-sends a request it had not yet written to such a
+            // connection; one that was already written is retried once here. The failed
+            // connection has been discarded, so the retry uses a fresh one.
+            Err(e) if is_stale_connection_error(&e) => self.post_bulk(&url, ips).await?,
+            Err(e) => return Err(e.into()),
+        };
 
         let status = resp.status();
         if !status.is_success() {
@@ -187,6 +247,16 @@ impl IpData {
 
         let bulk: BulkResponse = resp.json().await?;
         Ok(bulk.responses)
+    }
+
+    /// Sends the bulk `POST` once and returns the raw response.
+    async fn post_bulk(&self, url: &str, ips: &[&str]) -> reqwest::Result<reqwest::Response> {
+        self.client
+            .post(url)
+            .query(&[("api-key", &self.api_key)])
+            .json(&ips)
+            .send()
+            .await
     }
 
     /// Internal typed GET helper for sub-resource endpoints.
@@ -223,6 +293,39 @@ impl IpData {
 
         Ok(resp.json().await?)
     }
+}
+
+/// Builds the [`reqwest::Client`] used by [`IpData::new`], [`IpData::eu`] and
+/// [`IpData::with_base_url`].
+///
+/// The client identifies the SDK with a `User-Agent` default header and is tuned for
+/// connection reuse: HTTP/2 is negotiated through ALPN with automatic HTTP/1.1
+/// fallback, pooled connections are closed after 60 s idle, HTTP/2 connections are kept
+/// alive with a PING every 30 s (10 s to answer, also while idle) and TCP keep-alive
+/// probes run every 30 s. No total request timeout is set.
+fn build_http_client() -> reqwest::Client {
+    let mut headers = HeaderMap::new();
+    let ua = format!("ipdata-rust/{VERSION}");
+    headers.insert(USER_AGENT, HeaderValue::from_str(&ua).unwrap());
+
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .pool_idle_timeout(POOL_IDLE_TIMEOUT)
+        .tcp_keepalive(TCP_KEEPALIVE)
+        .http2_keep_alive_interval(HTTP2_KEEP_ALIVE_INTERVAL)
+        .http2_keep_alive_timeout(HTTP2_KEEP_ALIVE_TIMEOUT)
+        .http2_keep_alive_while_idle(true)
+        .build()
+        .expect("failed to build HTTP client")
+}
+
+/// Whether a `send()` failure means the request died on an established connection
+/// before any response arrived: a reset, EOF or broken pipe on a reused socket.
+///
+/// Connection-level failures (DNS, TCP connect, TLS, proxy) and timeouts are excluded:
+/// a retry would not help, or the server may already have received the request.
+fn is_stale_connection_error(e: &reqwest::Error) -> bool {
+    e.is_request() && !e.is_connect() && !e.is_timeout()
 }
 
 /// Validates that a string is a valid IPv4 or IPv6 address.
