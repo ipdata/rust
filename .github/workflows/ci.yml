@@ -23,3 +23,59 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
 
       - run: cargo test
+
+  # Tags and releases the version in Cargo.toml once a push to the default
+  # branch is green. Nothing happens when that version is already tagged.
+  release:
+    needs: test
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      created: ${{ steps.release.outputs.created }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(sed -nE 's/^version *= *"([^"]+)".*/\1/p' Cargo.toml | head -1)"
+          if [ -z "$VERSION" ]; then
+            echo "::error::No version found in Cargo.toml"
+            exit 1
+          fi
+          TAG="v$VERSION"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          STATUS=0
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null || STATUS=$?
+          case "$STATUS" in
+            0)
+              echo "Tag $TAG already exists; nothing to release."
+              echo "created=false" >> "$GITHUB_OUTPUT"
+              ;;
+            2)
+              gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+              echo "created=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::Could not check whether tag $TAG exists (git ls-remote exited with $STATUS)"
+              exit "$STATUS"
+              ;;
+          esac
+
+  # A release created with the workflow's own token does not trigger the
+  # publish workflow, so it is called from this run instead.
+  publish:
+    needs: release
+    if: needs.release.outputs.created == 'true'
+    uses: ./.github/workflows/publish.yml
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+    secrets: inherit
