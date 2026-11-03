@@ -1,28 +1,33 @@
 use serde::{Deserialize, Serialize};
 
 /// Full IP geolocation and threat intelligence response.
+///
+/// Unknown keys are ignored. A missing key and an explicit JSON `null` decode the same
+/// way: `Option` fields read `None`, every other field reads its default (`""`,
+/// `false`, `0.0` or an empty list). The nested types follow the same rule, so a
+/// `null` anywhere in a response never fails a lookup.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct IpInfo {
     /// The queried IP address.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub ip: String,
 
     /// Whether the IP is in an EU member country.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_eu: bool,
 
     /// Whether the IP belongs to a satellite internet provider.
     ///
     /// The API sends this key only when it is true; the field reads `false` when the
     /// key is absent.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_satellite: bool,
 
     /// Whether the IP is an anycast address, announced from several locations at once.
     ///
     /// The API sends this key only when it is true; the field reads `false` when the
     /// key is absent.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_anycast: bool,
 
     /// City name.
@@ -58,11 +63,11 @@ pub struct IpInfo {
     pub continent_code: Option<String>,
 
     /// Latitude.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub latitude: f64,
 
     /// Longitude.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub longitude: f64,
 
     /// Postal / ZIP code.
@@ -102,7 +107,7 @@ pub struct IpInfo {
     pub carrier: Option<Carrier>,
 
     /// Languages spoken in the country.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub languages: Vec<Language>,
 
     /// Local currency information.
@@ -134,23 +139,23 @@ pub struct IpInfo {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Asn {
     /// ASN string (e.g. "AS15169").
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub asn: String,
 
     /// Organization name.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub name: String,
 
     /// Organization domain.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub domain: String,
 
     /// Route prefix (e.g. "8.8.8.0/24").
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub route: String,
 
     /// ASN type: "isp", "business", "education", "hosting", or "inactive".
-    #[serde(default, rename = "type")]
+    #[serde(default, rename = "type", deserialize_with = "null_as_default")]
     pub asn_type: String,
 }
 
@@ -158,19 +163,19 @@ pub struct Asn {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Company {
     /// Company name.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub name: String,
 
     /// Company domain.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub domain: String,
 
     /// Network CIDR.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub network: String,
 
     /// Type: "isp", "business", "education", or "hosting".
-    #[serde(default, rename = "type")]
+    #[serde(default, rename = "type", deserialize_with = "null_as_default")]
     pub company_type: String,
 }
 
@@ -178,15 +183,15 @@ pub struct Company {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Carrier {
     /// Carrier name.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub name: String,
 
     /// Mobile Country Code.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub mcc: String,
 
     /// Mobile Network Code.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub mnc: String,
 }
 
@@ -194,11 +199,11 @@ pub struct Carrier {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Language {
     /// Language name in English.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub name: String,
 
     /// Language name in its native form.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub native: String,
 
     /// ISO 639-1 language code.
@@ -210,23 +215,23 @@ pub struct Language {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Currency {
     /// Currency name (e.g. "US Dollar").
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub name: String,
 
     /// ISO 4217 currency code (e.g. "USD").
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub code: String,
 
     /// Currency symbol (e.g. "$").
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub symbol: String,
 
     /// Native currency symbol.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub native: String,
 
     /// Plural form of the currency name.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub plural: String,
 }
 
@@ -258,60 +263,51 @@ pub struct TimeZone {
     pub current_time: String,
 }
 
-/// Deserializes an explicit JSON `null` as the field's default value.
-fn null_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: Default + Deserialize<'de>,
-{
-    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
-}
-
 /// Threat intelligence data for an IP address.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Threat {
     /// Whether the IP is a known Tor exit node.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_tor: bool,
 
     /// Whether the IP belongs to a known VPN provider.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_vpn: bool,
 
     /// Whether the IP is an iCloud Private Relay address.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_icloud_relay: bool,
 
     /// Whether the IP is a known proxy.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_proxy: bool,
 
     /// Whether the IP belongs to a data center.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_datacenter: bool,
 
     /// Whether the IP is anonymous (Tor, proxy, or VPN).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_anonymous: bool,
 
     /// Whether the IP is a known attacker.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_known_attacker: bool,
 
     /// Whether the IP is a known abuser.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_known_abuser: bool,
 
     /// Whether the IP is listed in any threat feed.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_threat: bool,
 
     /// Whether the IP is a bogon (unallocated/reserved).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_bogon: bool,
 
     /// Threat feeds that list this IP.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub blocklists: Vec<Blocklist>,
 
     /// Machine-learning-based threat scores.
@@ -325,19 +321,19 @@ pub struct Threat {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ThreatScores {
     /// VPN likelihood score.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub vpn_score: i32,
 
     /// Proxy likelihood score.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub proxy_score: i32,
 
     /// Overall threat score.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub threat_score: i32,
 
     /// Trust / reputation score.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub trust_score: i32,
 }
 
@@ -345,15 +341,15 @@ pub struct ThreatScores {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Blocklist {
     /// Blocklist name.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub name: String,
 
     /// Blocklist website URL.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub site: String,
 
     /// Blocklist category / type.
-    #[serde(default, rename = "type")]
+    #[serde(default, rename = "type", deserialize_with = "null_as_default")]
     pub blocklist_type: String,
 
     /// First day the IP was seen on this blocklist, as a `YYYY-MM-DD` date (UTC).
@@ -380,4 +376,18 @@ pub struct Blocklist {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct BulkResponse {
     pub responses: Vec<IpInfo>,
+}
+
+/// Deserializes an explicit JSON `null` as the field's default value.
+///
+/// Used together with `#[serde(default)]` on the public fields that are not `Option`s:
+/// `default` covers a missing key and this function covers a key sent as `null`, so
+/// neither fails the whole response. Any other value is decoded as usual, and a value
+/// of the wrong type is still an error.
+fn null_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }

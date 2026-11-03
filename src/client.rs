@@ -157,54 +157,42 @@ impl IpData {
     pub async fn lookup_field(&self, ip: &str, field: &str) -> Result<serde_json::Value> {
         validate_ip(ip)?;
         let url = format!("{}/{}/{}", self.base_url, ip, field);
-        let resp = self
-            .client
-            .get(&url)
-            .query(&[("api-key", &self.api_key)])
-            .send()
-            .await?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(parse_error(status.as_u16(), resp).await);
-        }
-
-        Ok(resp.json().await?)
+        self.get(&url, &[]).await
     }
 
     /// Returns ASN (Autonomous System Number) data for an IP address.
     pub async fn asn(&self, ip: &str) -> Result<Asn> {
         validate_ip(ip)?;
         let url = format!("{}/{}/asn", self.base_url, ip);
-        self.get_typed(&url).await
+        self.get(&url, &[]).await
     }
 
     /// Returns mobile carrier data for an IP address.
     pub async fn carrier(&self, ip: &str) -> Result<Carrier> {
         validate_ip(ip)?;
         let url = format!("{}/{}/carrier", self.base_url, ip);
-        self.get_typed(&url).await
+        self.get(&url, &[]).await
     }
 
     /// Returns currency data for an IP address.
     pub async fn currency(&self, ip: &str) -> Result<Currency> {
         validate_ip(ip)?;
         let url = format!("{}/{}/currency", self.base_url, ip);
-        self.get_typed(&url).await
+        self.get(&url, &[]).await
     }
 
     /// Returns time zone data for an IP address.
     pub async fn time_zone(&self, ip: &str) -> Result<TimeZone> {
         validate_ip(ip)?;
         let url = format!("{}/{}/time_zone", self.base_url, ip);
-        self.get_typed(&url).await
+        self.get(&url, &[]).await
     }
 
     /// Returns threat intelligence data for an IP address.
     pub async fn threat(&self, ip: &str) -> Result<Threat> {
         validate_ip(ip)?;
         let url = format!("{}/{}/threat", self.base_url, ip);
-        self.get_typed(&url).await
+        self.get(&url, &[]).await
     }
 
     /// Performs a bulk lookup for up to 100 IP addresses.
@@ -240,12 +228,7 @@ impl IpData {
             Err(e) => return Err(e.into()),
         };
 
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(parse_error(status.as_u16(), resp).await);
-        }
-
-        let bulk: BulkResponse = resp.json().await?;
+        let bulk: BulkResponse = decode_response(resp).await?;
         Ok(bulk.responses)
     }
 
@@ -259,25 +242,10 @@ impl IpData {
             .await
     }
 
-    /// Internal typed GET helper for sub-resource endpoints.
-    async fn get_typed<T: serde::de::DeserializeOwned>(&self, url: &str) -> Result<T> {
-        let resp = self
-            .client
-            .get(url)
-            .query(&[("api-key", &self.api_key)])
-            .send()
-            .await?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(parse_error(status.as_u16(), resp).await);
-        }
-
-        Ok(resp.json().await?)
-    }
-
-    /// Internal GET helper for IP lookups with optional field filtering.
-    async fn get(&self, url: &str, fields: &[&str]) -> Result<IpInfo> {
+    /// Internal GET helper shared by the full lookups, the raw single-field lookup and
+    /// the typed sub-resources: sends the API key and, when `fields` is not empty, a
+    /// comma-separated `fields` filter, then decodes the JSON body into `T`.
+    async fn get<T: serde::de::DeserializeOwned>(&self, url: &str, fields: &[&str]) -> Result<T> {
         let mut req = self.client.get(url).query(&[("api-key", &self.api_key)]);
 
         if !fields.is_empty() {
@@ -285,13 +253,7 @@ impl IpData {
             req = req.query(&[("fields", &fields_str)]);
         }
 
-        let resp = req.send().await?;
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(parse_error(status.as_u16(), resp).await);
-        }
-
-        Ok(resp.json().await?)
+        decode_response(req.send().await?).await
     }
 }
 
@@ -333,6 +295,17 @@ fn validate_ip(ip: &str) -> Result<()> {
     ip.parse::<std::net::IpAddr>()
         .map(|_| ())
         .map_err(|_| Error::InvalidIp(ip.to_string()))
+}
+
+/// Decodes the JSON body of a successful response into `T`. A non-success status
+/// becomes [`Error::Api`] with the message from the response body.
+async fn decode_response<T: serde::de::DeserializeOwned>(resp: reqwest::Response) -> Result<T> {
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(parse_error(status.as_u16(), resp).await);
+    }
+
+    Ok(resp.json().await?)
 }
 
 /// Parses an error response from the API.

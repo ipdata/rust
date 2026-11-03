@@ -21,6 +21,13 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! ## Response types
+//!
+//! [`IpInfo`] and the nested types ([`Asn`], [`Threat`], [`TimeZone`] and the others)
+//! ignore unknown keys and decode a missing key and an explicit JSON `null` the same
+//! way: `Option` fields read `None`, every other field reads its default (`""`, `false`,
+//! `0`, `0.0` or an empty list). A `null` anywhere in a response never fails a lookup.
 
 mod client;
 mod error;

@@ -165,6 +165,31 @@ async fn lookup_field_returns_the_raw_json_value() {
 }
 
 #[tokio::test]
+async fn lookup_field_maps_api_errors_like_the_typed_lookups() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/8.8.8.8/asn"))
+        .and(query_param("api-key", API_KEY))
+        .respond_with(
+            ResponseTemplate::new(403).set_body_json(json!({ "message": "quota exceeded" })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let err = client_for(&server)
+        .lookup_field("8.8.8.8", "asn")
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        &err,
+        Error::Api { status: 403, message } if message == "quota exceeded"
+    ));
+    assert_eq!(err.status(), Some(403));
+}
+
+#[tokio::test]
 async fn asn_decodes_the_typed_sub_resource() {
     let server = MockServer::start().await;
     mock_get(&server, "/8.8.8.8/asn", asn_json()).await;
@@ -280,6 +305,52 @@ async fn threat_decodes_the_typed_sub_resource() {
     let scores = threat.scores.unwrap();
     assert_eq!(scores.vpn_score, 100);
     assert_eq!(scores.trust_score, 0);
+}
+
+#[tokio::test]
+async fn sub_resources_answered_with_nulls_decode_to_defaults() {
+    let server = MockServer::start().await;
+    mock_get(
+        &server,
+        "/8.8.8.8/carrier",
+        json!({ "name": null, "mcc": null, "mnc": null }),
+    )
+    .await;
+    mock_get(
+        &server,
+        "/8.8.8.8/asn",
+        json!({
+            "asn": "AS15169",
+            "name": "Google LLC",
+            "domain": null,
+            "route": null,
+            "type": null
+        }),
+    )
+    .await;
+    mock_get(
+        &server,
+        "/8.8.8.8/time_zone",
+        json!({ "name": null, "abbr": null, "offset": null, "is_dst": null, "current_time": null }),
+    )
+    .await;
+    let client = client_for(&server);
+
+    let carrier = client.carrier("8.8.8.8").await.unwrap();
+    assert_eq!(carrier.name, "");
+    assert_eq!(carrier.mcc, "");
+    assert_eq!(carrier.mnc, "");
+
+    let asn = client.asn("8.8.8.8").await.unwrap();
+    assert_eq!(asn.asn, "AS15169");
+    assert_eq!(asn.name, "Google LLC");
+    assert_eq!(asn.domain, "");
+    assert_eq!(asn.route, "");
+    assert_eq!(asn.asn_type, "");
+
+    let tz = client.time_zone("8.8.8.8").await.unwrap();
+    assert_eq!(tz.name, "");
+    assert!(!tz.is_dst);
 }
 
 #[tokio::test]
