@@ -140,6 +140,10 @@ The main response type is `IpInfo` which includes:
 
 All response structs ignore unknown keys and decode a missing key and an explicit `null` alike: `Option` fields read `None`, every other field reads its default (`""`, `false`, `0`, `0.0` or an empty list), so a `null` anywhere in a response does not fail the lookup.
 
+## Releasing
+
+Releases are cut by CI; nothing is tagged by hand. Bump `version` in `Cargo.toml` in a pull request and merge it: once the tests on the merge commit pass, CI tags it `vX.Y.Z`, creates the GitHub release with generated notes and publishes the crate to [crates.io](https://crates.io/crates/ipdata). A merge whose version is already tagged publishes nothing. A release published by hand on GitHub still runs the same publish workflow.
+
 ## License
 
 MIT

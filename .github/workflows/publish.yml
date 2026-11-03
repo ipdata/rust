@@ -3,6 +3,12 @@ name: Publish to crates.io
 on:
   release:
     types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag of the release to publish, for example v0.1.2
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,6 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The tag being published: the input when called from the release job
+          # in ci.yml, the release's own tag when a release is published by hand.
+          ref: refs/tags/${{ inputs.tag || github.event.release.tag_name }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
