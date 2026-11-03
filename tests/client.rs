@@ -698,3 +698,131 @@ fn read_request(stream: &mut TcpStream, buf: &mut Vec<u8>) -> Option<Recorded> {
         body,
     })
 }
+
+// --- New response fields: is_satellite, is_anycast and dated blocklist entries ------
+
+const SATELLITE_FIXTURE: &str = include_str!("fixtures/satellite.json");
+const ANYCAST_FIXTURE: &str = include_str!("fixtures/anycast.json");
+const VPN_EXIT_FIXTURE: &str = include_str!("fixtures/vpn_exit.json");
+
+fn fixture(json: &str) -> Value {
+    serde_json::from_str(json).unwrap()
+}
+
+#[tokio::test]
+async fn lookup_decodes_is_satellite_and_is_anycast() {
+    let server = MockServer::start().await;
+    mock_get(&server, "/98.97.34.0", fixture(SATELLITE_FIXTURE)).await;
+    mock_get(&server, "/8.8.8.8", fixture(ANYCAST_FIXTURE)).await;
+    let client = client_for(&server);
+
+    let satellite = client.lookup("98.97.34.0").await.unwrap();
+    assert!(satellite.is_satellite);
+    assert!(!satellite.is_anycast);
+
+    let anycast = client.lookup("8.8.8.8").await.unwrap();
+    assert!(anycast.is_anycast);
+    assert!(!anycast.is_satellite);
+    let entry = &anycast.threat.unwrap().blocklists[0];
+    assert_eq!(entry.first_seen.as_deref(), Some("2026-11-02"));
+    assert_eq!(entry.last_seen.as_deref(), Some("2026-11-02"));
+    assert_eq!(entry.days_seen, Some(1));
+}
+
+#[tokio::test]
+async fn lookup_fields_accepts_the_new_field_names() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/8.8.8.8"))
+        .and(query_param("api-key", API_KEY))
+        .and(query_param("fields", "is_satellite,is_anycast"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "is_anycast": true })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let info = client_for(&server)
+        .lookup_fields("8.8.8.8", &["is_satellite", "is_anycast"])
+        .await
+        .unwrap();
+
+    assert!(info.is_anycast);
+    assert!(!info.is_satellite);
+}
+
+#[tokio::test]
+async fn lookup_field_fetches_the_new_flags_on_their_own() {
+    let server = MockServer::start().await;
+    mock_get(&server, "/8.8.8.8/is_anycast", json!(true)).await;
+    mock_get(&server, "/98.97.34.0/is_satellite", json!(true)).await;
+    let client = client_for(&server);
+
+    let is_anycast = client.lookup_field("8.8.8.8", "is_anycast").await.unwrap();
+    assert_eq!(is_anycast, Value::Bool(true));
+    let is_satellite = client
+        .lookup_field("98.97.34.0", "is_satellite")
+        .await
+        .unwrap();
+    assert_eq!(is_satellite, Value::Bool(true));
+}
+
+#[tokio::test]
+async fn threat_decodes_blocklist_entries_with_and_without_dates() {
+    let server = MockServer::start().await;
+    mock_get(
+        &server,
+        "/187.13.250.1/threat",
+        fixture(VPN_EXIT_FIXTURE)["threat"].clone(),
+    )
+    .await;
+
+    let threat = client_for(&server).threat("187.13.250.1").await.unwrap();
+
+    assert!(threat.is_vpn);
+    assert_eq!(threat.blocklists.len(), 6);
+    assert_eq!(threat.blocklists[0].name, "Gluetun");
+    assert_eq!(threat.blocklists[0].days_seen, Some(2));
+    let undated = &threat.blocklists[2];
+    assert_eq!(undated.name, "ipdata");
+    assert_eq!(undated.blocklist_type, "vpn");
+    assert_eq!(undated.first_seen, None);
+    assert_eq!(undated.last_seen, None);
+    assert_eq!(undated.days_seen, None);
+}
+
+#[tokio::test]
+async fn bulk_items_carry_the_new_fields() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/bulk"))
+        .and(query_param("api-key", API_KEY))
+        .and(body_json(json!(["98.97.34.0", "8.8.8.8", "187.13.250.1"])))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "responses": [
+                fixture(SATELLITE_FIXTURE),
+                fixture(ANYCAST_FIXTURE),
+                fixture(VPN_EXIT_FIXTURE)
+            ]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let results = client_for(&server)
+        .bulk(&["98.97.34.0", "8.8.8.8", "187.13.250.1"])
+        .await
+        .unwrap();
+
+    assert_eq!(results.len(), 3);
+    assert!(results[0].is_satellite);
+    assert!(!results[0].is_anycast);
+    assert!(results[1].is_anycast);
+    assert!(!results[1].is_satellite);
+    assert!(!results[2].is_satellite);
+    assert!(!results[2].is_anycast);
+    let threat = results[2].threat.as_ref().unwrap();
+    assert!(threat.is_vpn);
+    assert_eq!(threat.blocklists[2].first_seen, None);
+    assert_eq!(threat.blocklists[3].name, "NordVPN");
+    assert_eq!(threat.blocklists[3].days_seen, Some(2));
+}

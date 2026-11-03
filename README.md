@@ -122,6 +122,9 @@ match client.lookup("8.8.8.8").await {
 The main response type is `IpInfo` which includes:
 
 - **Geolocation**: `city`, `region`, `country_name`, `country_code`, `continent_name`, `latitude`, `longitude`, `postal`
+- **Flags**: `is_eu` (EU member country), plus two flags the API sends only when they are true, so the typed fields read `false` when the key is absent:
+  - `is_satellite`: the IP belongs to a satellite internet provider
+  - `is_anycast`: the IP is an anycast address announced from several locations at once
 - **ASN**: `asn` (struct with `asn`, `name`, `domain`, `route`, `asn_type`)
 - **Company**: `company` (struct with `name`, `domain`, `network`, `company_type`)
 - **Carrier**: `carrier` (struct with `name`, `mcc`, `mnc`)
@@ -129,6 +132,10 @@ The main response type is `IpInfo` which includes:
 - **Time Zone**: `time_zone` (struct with `name`, `abbreviation`, `offset`, `is_dst`, `current_time`)
 - **Organisation**: `organisation` (ISP / organization name)
 - **Threat**: `threat` (struct with `is_tor`, `is_vpn`, `is_proxy`, `is_anonymous`, `is_threat`, `is_bogon`, `blocklists`, `scores`, and more)
+- **Blocklist entries**: each `Blocklist` in `threat.blocklists` has `name`, `site` and `blocklist_type`, plus three fields that are `None` when a feed does not report them (ipdata's own vpn feed, for example):
+  - `first_seen`: first day the IP was seen on the list, as a `YYYY-MM-DD` string (UTC)
+  - `last_seen`: most recent day the IP was seen on the list, as a `YYYY-MM-DD` string (UTC)
+  - `days_seen`: number of days the IP has been seen on the list
 - **Languages**: `languages` (vec of `Language` with `name`, `native`, `code`)
 
 ## License

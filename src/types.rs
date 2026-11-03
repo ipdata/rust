@@ -11,6 +11,20 @@ pub struct IpInfo {
     #[serde(default)]
     pub is_eu: bool,
 
+    /// Whether the IP belongs to a satellite internet provider.
+    ///
+    /// The API sends this key only when it is true; the field reads `false` when the
+    /// key is absent.
+    #[serde(default)]
+    pub is_satellite: bool,
+
+    /// Whether the IP is an anycast address, announced from several locations at once.
+    ///
+    /// The API sends this key only when it is true; the field reads `false` when the
+    /// key is absent.
+    #[serde(default)]
+    pub is_anycast: bool,
+
     /// City name.
     #[serde(default)]
     pub city: Option<String>,
@@ -217,27 +231,40 @@ pub struct Currency {
 }
 
 /// Time zone information.
+///
+/// The API sends every field as `null` when it cannot determine a time zone, for
+/// example for anycast addresses; such fields decode to their default (empty string or
+/// `false`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TimeZone {
     /// IANA time zone name (e.g. "America/New_York").
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub name: String,
 
     /// Time zone abbreviation (e.g. "EST").
-    #[serde(default, rename = "abbr")]
+    #[serde(default, rename = "abbr", deserialize_with = "null_as_default")]
     pub abbreviation: String,
 
     /// UTC offset string (e.g. "-0500").
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub offset: String,
 
     /// Whether daylight saving time is active.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_dst: bool,
 
     /// Current time in the time zone (ISO 8601).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub current_time: String,
+}
+
+/// Deserializes an explicit JSON `null` as the field's default value.
+fn null_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 /// Threat intelligence data for an IP address.
@@ -328,6 +355,25 @@ pub struct Blocklist {
     /// Blocklist category / type.
     #[serde(default, rename = "type")]
     pub blocklist_type: String,
+
+    /// First day the IP was seen on this blocklist, as a `YYYY-MM-DD` date (UTC).
+    ///
+    /// Some feeds, including ipdata's own vpn feed, report no dates; the field is then
+    /// `None`.
+    #[serde(default)]
+    pub first_seen: Option<String>,
+
+    /// Most recent day the IP was seen on this blocklist, as a `YYYY-MM-DD` date (UTC).
+    ///
+    /// `None` when the feed reports no dates.
+    #[serde(default)]
+    pub last_seen: Option<String>,
+
+    /// Number of days the IP has been seen on this blocklist.
+    ///
+    /// `None` when the feed reports no dates.
+    #[serde(default)]
+    pub days_seen: Option<i32>,
 }
 
 /// Response wrapper for bulk lookups.
