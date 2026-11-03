@@ -138,6 +138,8 @@ The main response type is `IpInfo` which includes:
   - `days_seen`: number of days the IP has been seen on the list
 - **Languages**: `languages` (vec of `Language` with `name`, `native`, `code`)
 
+All response structs ignore unknown keys and decode a missing key and an explicit `null` alike: `Option` fields read `None`, every other field reads its default (`""`, `false`, `0`, `0.0` or an empty list), so a `null` anywhere in a response does not fail the lookup.
+
 ## License
 
 MIT

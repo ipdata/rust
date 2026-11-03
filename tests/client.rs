@@ -283,6 +283,52 @@ async fn threat_decodes_the_typed_sub_resource() {
 }
 
 #[tokio::test]
+async fn sub_resources_answered_with_nulls_decode_to_defaults() {
+    let server = MockServer::start().await;
+    mock_get(
+        &server,
+        "/8.8.8.8/carrier",
+        json!({ "name": null, "mcc": null, "mnc": null }),
+    )
+    .await;
+    mock_get(
+        &server,
+        "/8.8.8.8/asn",
+        json!({
+            "asn": "AS15169",
+            "name": "Google LLC",
+            "domain": null,
+            "route": null,
+            "type": null
+        }),
+    )
+    .await;
+    mock_get(
+        &server,
+        "/8.8.8.8/time_zone",
+        json!({ "name": null, "abbr": null, "offset": null, "is_dst": null, "current_time": null }),
+    )
+    .await;
+    let client = client_for(&server);
+
+    let carrier = client.carrier("8.8.8.8").await.unwrap();
+    assert_eq!(carrier.name, "");
+    assert_eq!(carrier.mcc, "");
+    assert_eq!(carrier.mnc, "");
+
+    let asn = client.asn("8.8.8.8").await.unwrap();
+    assert_eq!(asn.asn, "AS15169");
+    assert_eq!(asn.name, "Google LLC");
+    assert_eq!(asn.domain, "");
+    assert_eq!(asn.route, "");
+    assert_eq!(asn.asn_type, "");
+
+    let tz = client.time_zone("8.8.8.8").await.unwrap();
+    assert_eq!(tz.name, "");
+    assert!(!tz.is_dst);
+}
+
+#[tokio::test]
 async fn bulk_posts_the_ip_list_and_returns_results_in_order() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
